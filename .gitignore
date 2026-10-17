@@ -1,0 +1,36 @@
+# =============================================================================
+# Secretos — nunca versionar
+# =============================================================================
+.env
+.env.*
+!.env.example
+
+# Backups: son datos del cliente, no código.
+backups/
+*.dump
+*.sql.gz
+*.tar.gz
+*.tar
+manifest.sha256
+
+# Salida de Foundry cuando se genera en esta misma carpeta
+pours/
+
+# Certificados y claves de proxy/TLS
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.swp
+*~
+id_rsa
+id_ed25519
+
+# Logs
+*.log
+logs/
