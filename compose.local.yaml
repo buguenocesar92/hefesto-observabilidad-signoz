@@ -1,0 +1,12 @@
+# Override SOLO para uso local sin Coolify. Restaura los puertos de antes:
+# UI en ${SIGNOZ_BIND_ADDRESS:-127.0.0.1}:8080 y OTLP en 127.0.0.1:4317/4318.
+#   docker compose -f compose.yaml -f compose.local.yaml up -d
+# En Coolify NO se usa: Traefik llega a signoz-signoz-0:8080 por la red Docker.
+services:
+  ingester:
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+  signoz-signoz-0:
+    ports:
+      - "${SIGNOZ_BIND_ADDRESS:-127.0.0.1}:8080:8080"
