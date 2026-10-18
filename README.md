@@ -152,57 +152,6 @@ Eso es opinión nuestra, no una cifra de upstream.
 
 ---
 
-## Despliegue en Coolify (MVP Hefesto)
-
-`compose.yaml` está pensado para ser el recurso **Docker Compose** de Coolify.
-Traefik (el proxy de Coolify) llega al servicio `signoz-signoz-0` por la red
-Docker del proyecto y le pasa el puerto **8080**; por eso el compose raíz **no
-publica puertos**. Si Coolify publicara los suyos propios, chocaría con el
-contrato del kit.
-
-**Variables del recurso en Coolify.** Las mismas que el modo Docker local:
-
-| Variable | Valor | Secreto |
-|---|---|---|
-| `POSTGRES_PASSWORD` | cadena aleatoria fuerte | **Sí** |
-| `SIGNOZ_USER_ROOT_ENABLED` | `true` solo en el primer despliegue | No |
-| `SIGNOZ_USER_ROOT_EMAIL` | `admin@tucliente.cl` | No |
-| `SIGNOZ_USER_ROOT_PASSWORD` | contraseña fuerte | **Sí** |
-| `SIGNOZ_USER_ROOT_ORG_NAME` | nombre del cliente | No |
-
-Después del primer arranque, vacía `SIGNOZ_USER_ROOT_*` y redeploy (ver
-[`docs/04-PRIMERA-CUENTA-Y-USUARIOS.md`](docs/04-PRIMERA-CUENTA-Y-USUARIOS.md)).
-
-**Dominio.** Configura el dominio en Coolify y Traefik lo enruta a
-`signoz-signoz-0:8080` por la red Docker. No hay que publicar ni mapear el
-puerto manualmente.
-
-**Puertos OTLP.** SigNoz self-hosted **no exige clave de ingesta** (verificado
-en la doc oficial); cualquier persona que alcance `4317/4318` escribe
-telemetría en tu instancia. Por eso `compose.yaml` **no los publica**. Para
-una Pyme basta con la red Docker. Si necesitas OTLP remoto, usa VPN o un proxy
-con mTLS, **nunca** abras esos puertos a internet (ver
-[`docs/02-INSTALACION-COOLIFY.md`](docs/02-INSTALACION-COOLIFY.md) y
-[`docs/08-SERVICIOS-COMERCIALES.md`](docs/08-SERVICIOS-COMERCIALES.md)).
-
-**Uso local sin Coolify.** Para desarrollo local, sobre el `compose.yaml`
-apila `compose.local.yaml`, que **restaura** los puertos que Coolify no
-quiere:
-
-```bash
-docker compose -f compose.yaml -f compose.local.yaml up -d
-```
-
-`compose.local.yaml` publica `8080` y OTLP (`4317/4318`) atados a
-`127.0.0.1`. **Nunca lo uses en producción** ni en el recurso de Coolify.
-
-**Comprobación del contrato.** Antes de subir el recurso a Coolify, corre
-`scripts/coolify-check.sh`. Renderiza el compose con `docker compose config` y
-detecta puertos publicados, `container_name:`, `name:` fijos, capacidades de
-host y binds fuera del repo. Debe imprimir `OK` y salir 0.
-
----
-
 ## Inicio rápido
 
 ```bash
