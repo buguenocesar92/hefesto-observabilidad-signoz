@@ -1,0 +1,137 @@
+# SigNoz — archivo de casting para Foundry (VIA SOPORTADA POR UPSTREAM)
+#
+# Este es el archivo FUENTE de la instalación soportada oficialmente por SigNoz.
+# Foundry (`foundryctl`) lo usa para generar todo el artefacto de despliegue
+# (compose.yaml + configuración de ClickHouse, Keeper y del colector).
+#
+# Desde la v0.130.0 el script `install.sh` y los compose de `deploy/` están
+# deprecados y NO se mantienen. Foundry es la vía soportada.
+# Fuente: https://signoz.io/docs/install/docker/
+#         https://github.com/SigNoz/signoz/blob/main/deploy/MIGRATION.md
+#
+# Uso:
+#   foundryctl cast --file casting.yaml --output-dir ./pours
+#   docker compose -f pours/deployment/compose.yaml up -d
+#
+# ---------------------------------------------------------------
+# ESTE ARCHIVO SOLO GENERA MANIFIESTOS. NO LEVANTA NADA.
+# ---------------------------------------------------------------
+
+apiVersion: v1alpha1
+kind: Installation
+metadata:
+  name: signoz
+
+spec:
+  deployment:
+    flavor: compose
+    mode: docker
+
+  # -------------------------------------------------------------
+  # Aplicación SigNoz (UI + API + servidor OpAMP en :4320)
+  # -------------------------------------------------------------
+  signoz:
+    spec:
+      # Versión FIJA. Upstream usa `latest` por defecto; el contrato de Hefesto
+      # exige fijar versión. Reemplaza el digest por el tag si prefieres
+      # algo legible, pero nunca dejes `latest`.
+      #   tag    : signoz/signoz:v0.146.0
+      #   digest : signoz/signoz@sha256:cd3ca6950df3b3681b4629c1b2cea4d3bcd5fece57445a3ec2a1a20466ab14ca
+      image: signoz/signoz:v0.146.0
+      env:
+        # --- Provisionamiento del usuario administrador raíz ---
+        # Disponible desde SigNoz v0.112.0. Se crea en el arranque, antes de
+        # que exista la primera sesión web. Cierra el hueco entre "instalé" y
+        # "creé el primer admin".
+        # Fuente: https://signoz.io/docs/manage/administrator-guide/configuration/root-user/
+        #
+        # OJO: las variables de abajo son PLACEHOLDERS. Reemplázalas por
+        # valores reales en tu gestor de secretos antes de desplegar.
+        # Nunca commitees las tuyas: este archivo es de ejemplo.
+        SIGNOZ_USER_ROOT_ENABLED: "true"
+        SIGNOZ_USER_ROOT_EMAIL: "admin@ejemplo.invalid"
+        SIGNOZ_USER_ROOT_PASSWORD: "CAMBIAR-POR-UN-PASSWORD-FUERTE"
+        SIGNOZ_USER_ROOT_ORG_NAME: "default"
+
+  # -------------------------------------------------------------
+  # Colector OpenTelemetry (ingesta OTLP :4317 gRPC / :4318 HTTP)
+  #
+  # ATENCIÓN: el colector NO comparte numeración de versión con la app.
+  # La app va en v0.146.0 mientras el colector va en v0.144.14. Es normal
+  # y está documentado en VERSION.md.
+  # -------------------------------------------------------------
+  ingester:
+    spec:
+      image: signoz/signoz-otel-collector:v0.144.14
+
+  # -------------------------------------------------------------
+  # Metastore: cuentas, organizaciones, tableros y reglas de alerta.
+  # Postgres SOLO guarda metadata. La telemetría va a ClickHouse.
+  # Fuente: https://signoz.io/docs/manage/administrator-guide/configuration/relational-database/
+  # -------------------------------------------------------------
+  metastore:
+    kind: postgres
+
+  # -------------------------------------------------------------
+  # Telemetry store: trazas, métricas y logs.
+  # El schema de Foundry solo admite `clickhouse`. NO es reemplazable.
+  # -------------------------------------------------------------
+  telemetrystore:
+    kind: clickhouse
+
+  # -------------------------------------------------------------
+  # ClickHouse Keeper: cuórum para ClickHouse en clúster.
+  # -------------------------------------------------------------
+  telemetrykeeper:
+    kind: clickhousekeeper
+
+  # -------------------------------------------------------------
+  # Endurecimiento post-generación.
+  #
+  # Upstream publica 8080, 4317 y 4318 en 0.0.0.0. Para una Pyme se
+  # recomienda dejar OTLP solo en la red interna y exponer únicamente
+  # la UI detrás de un proxy con TLS.
+  #
+  # target: archivo de salida a parchear (jsonpatch, RFC 6902).
+  # Descomenta cuando tengas tus propias imágenes y DSN en el .env;
+  # los valores `latest` de abajo son solo ilustrativos.
+  # -------------------------------------------------------------
+  patches:
+    - target: deployment/compose.yaml
+      type: jsonpatch
+      operations:
+        # --- Arranque: Docker espera a que ClickHouse esté listo ---
+        - op: add
+          path: /services/signoz-signoz-0/depends_on
+          value:
+            signoz-telemetrystore-clickhouse-0-0:
+              condition: service_healthy
+            signoz-telemetrystore-migrator:
+              condition: service_completed_successfully
+        - op: add
+          path: /services/signoz-telemetrystore-migrator/depends_on
+          value:
+            signoz-telemetrystore-clickhouse-0-0:
+              condition: service_healthy
+        - op: add
+          path: /services/ingester/depends_on
+          value:
+            signoz-telemetrystore-clickhouse-0-0:
+              condition: service_healthy
+
+        # --- No exponer OTLP a toda la interfaz del servidor ---
+        # Deja 4317/4318 accesibles solo desde localhost y desde la red
+        # Docker. El acceso remoto se hace por VPN o por proxy con auth.
+        # Ver 02-INSTALACION-COOLIFY.md y 08-SERVICIOS-COMERCIALES.md.
+        - op: replace
+          path: /services/ingester/ports/0
+          value: 127.0.0.1:4317:4317
+        - op: replace
+          path: /services/ingester/ports/1
+          value: 127.0.0.1:4318:4318
+
+        # --- UI: escucha en todas las interfaces del contenedor ---
+        # El proxy externo decide quién llega. Ver 04-PRIMERA-CUENTA.
+        - op: replace
+          path: /services/signoz-signoz-0/ports/0
+          value: 8080:8080
