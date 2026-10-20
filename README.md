@@ -81,7 +81,7 @@ Si vendes "7 días", es decisión comercial tuya, no el valor por defecto.
 ingesta**. Quien alcance el puerto 4317 o 4318 puede escribir telemetría en la
 instancia.
 
-Este kit los deja atados a `127.0.0.1` **a propósito**. Para enviar desde
+Este kit **no los publica** (solo red Docker interna); con `compose.local.yaml` quedan en `127.0.0.1` **a propósito**. Para enviar desde
 otra máquina, usa VPN o un proxy con autenticación. **No los abras a internet.**
 
 ### 6. No es multi-tenant
@@ -160,7 +160,7 @@ chmod 600 .env
 # Edita .env: POSTGRES_PASSWORD, SIGNOZ_USER_ROOT_*
 
 docker compose pull
-docker compose up -d
+docker compose -f compose.yaml -f compose.local.yaml up -d
 
 curl http://localhost:8080/api/v1/health     # debe devolver {"status":"ok"}
 ```
@@ -198,8 +198,8 @@ Detalle y procedimiento de restauración:
 
 | Puerto | Servicio | ¿Publicado? |
 |---|---|---|
-| 8080 | UI + API | Sí (en `127.0.0.1` por defecto) |
-| 4317 / 4318 | OTLP gRPC / HTTP | **Solo `127.0.0.1`** |
+| 8080 | UI + API | Solo con `compose.local.yaml` (en `127.0.0.1`). En Coolify, vía Traefik |
+| 4317 / 4318 | OTLP gRPC / HTTP | Solo con `compose.local.yaml` (en `127.0.0.1`). En Coolify, **no** |
 | 5432 | PostgreSQL | **No** |
 | 9000 / 8123 | ClickHouse | **No** |
 | 9181 | ClickHouse Keeper | **No** |
@@ -208,6 +208,34 @@ Detalle y procedimiento de restauración:
 > Ojo: la config de ClickHouse que genera upstream deja el usuario `default`
 > **sin contraseña**. Es seguro **solo porque el puerto no se pública**. No le
 > abras el 9000 "por si acaso": eso entrega la telemetría del cliente.
+
+---
+
+## Despliegue en Coolify (MVP Hefesto)
+
+Recurso **Docker Compose**, rama `coolify`, archivo `compose.yaml` (base `/`).
+Esta sección prevalece sobre `docs/02-INSTALACION-COOLIFY.md` en lo que difieran.
+
+- **Servicio web:** `signoz-signoz-0`, puerto `8080`. Coolify/Traefik pone dominio
+  y TLS. `compose.yaml` no publica ningún puerto; `SIGNOZ_BIND_ADDRESS` solo
+  aplica a `compose.local.yaml` (uso local).
+- **OTLP (4317/4318) no se publica:** solo es alcanzable por la red Docker
+  (alias `signoz-ingester`). Para enviar desde fuera, VPN o proxy autenticado.
+- **Variables obligatorias, definidas ANTES del primer arranque** (si no, el
+  primer registro en la UI se queda con el administrador):
+  `POSTGRES_PASSWORD`, `SIGNOZ_USER_ROOT_ENABLED=true`, `SIGNOZ_USER_ROOT_EMAIL`,
+  `SIGNOZ_USER_ROOT_PASSWORD`. Ver `docs/04-PRIMERA-CUENTA-Y-USUARIOS.md`.
+- **Nombres:** sin `name:` ni `container_name` fijos. Contenedores y volúmenes
+  llevan el prefijo del proyecto (`<proyecto>_signoz-metastore-postgres-0-data`,
+  etc.). Para `scripts/backup-signoz.sh` y `scripts/restore-signoz.sh` en un
+  servidor Coolify, exporta `COMPOSE_PROJECT_NAME` con el nombre del proyecto
+  que Coolify asignó.
+- **Jobs de una sola vez:** `signoz-telemetrystore-migrator` y
+  `signoz-telemetrystore-clickhouse-user-scripts` terminan como `exited (0)`;
+  es lo esperado. El segundo descarga un binario de GitHub en cada arranque.
+- **Recursos:** ClickHouse y Keeper corren locales; mínimo 4 GB de RAM.
+- `postgres:16` va sin digest (etiqueta de major flotante).
+- Validación del contrato: `bash scripts/coolify-check.sh` (requiere `docker` y `jq`).
 
 ---
 

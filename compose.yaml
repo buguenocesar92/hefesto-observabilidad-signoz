@@ -10,7 +10,7 @@
 # artefacto que produce Foundry, con tres cambios deliberados:
 #   1. Versiones fijadas (upstream genera `latest` para signoz y el colector).
 #   2. Rutas de configuración dentro de `config/` en vez de `pours/`.
-#   3. Puertos OTLP atados a 127.0.0.1 y dependencias de arranque explícitas.
+#   3. Sin puertos publicados (Coolify/Traefik llega a la UI por la red Docker; para uso local está compose.local.yaml) y dependencias de arranque explícitas.
 #
 # Cuándo conviene usar ESTE archivo en vez de `foundryctl`:
 #   - Coolify (el recurso "Docker Compose" no ejecuta foundryctl).
@@ -34,17 +34,15 @@
 #   - Docker Engine 20.10+ con Compose v2.
 #   - Mínimo 4 GB de RAM.
 #
-# PUERTOS PUBLICADOS: solo 8080 (UI). OTLP queda en 127.0.0.1 salvo que
-# quieras exponerlo a propósito (lee 08-SERVICIOS-COMERCIALES.md antes).
+# PUERTOS PUBLICADOS: ninguno. Coolify enruta el dominio a signoz-signoz-0:8080
+# por la red Docker. Para uso local sin Coolify, añade compose.local.yaml
+# (publica 8080 y OTLP en 127.0.0.1). Lee 08-SERVICIOS-COMERCIALES.md antes de exponer OTLP.
 # ClickHouse (9000/8123), Keeper (9181), Postgres (5432) y OpAMP (4320) NUNCA
 # se publican: viven solo en la red Docker interna.
 # =============================================================================
 
-name: signoz
-
 networks:
-  signoz-network:
-    name: signoz-network
+  signoz-network: {}
 
 services:
   # ---------------------------------------------------------------------------
@@ -52,7 +50,6 @@ services:
   # Es lo ÚNICO que de verdad no se puede regenerar. Respaldalo siempre.
   # ---------------------------------------------------------------------------
   signoz-metastore-postgres-0:
-    container_name: signoz-metastore-postgres-0
     # `postgres:16` es una etiqueta de major flotante, que es lo que resuelve
     # Foundry por defecto. No se fijó a digest porque no verifiqué el digest de
     # esta imagen (queda anotado en docs/07-PRUEBAS-DE-ACEPTACION.md).
@@ -83,7 +80,6 @@ services:
   # porque es un job, no un servicio de larga duración.
   # ---------------------------------------------------------------------------
   signoz-telemetrystore-migrator:
-    container_name: signoz-telemetrystore-migrator
     image: signoz/signoz-otel-collector:v0.144.14
     restart: on-failure
     entrypoint: ["/bin/sh"]
@@ -108,7 +104,6 @@ services:
   # histogramas en las alertas. Tarda en salir: no es un fallo de arranque.
   # ---------------------------------------------------------------------------
   signoz-telemetrystore-clickhouse-user-scripts:
-    container_name: signoz-telemetrystore-clickhouse-user-scripts
     image: clickhouse/clickhouse-server:25.12.5
     restart: on-failure
     command:
@@ -132,7 +127,6 @@ services:
   # ClickHouse Keeper — coordinación del clúster ClickHouse.
   # ---------------------------------------------------------------------------
   signoz-telemetrykeeper-clickhousekeeper-0:
-    container_name: signoz-telemetrykeeper-clickhousekeeper-0
     image: clickhouse/clickhouse-keeper:25.12.5
     restart: unless-stopped
     entrypoint: ["/usr/bin/clickhouse-keeper", "--config-file=/etc/clickhouse-keeper/keeper.yaml"]
@@ -156,7 +150,6 @@ services:
   # No le abras el puerto "por si acaso": eso entrega la telemetría del cliente.
   # ---------------------------------------------------------------------------
   signoz-telemetrystore-clickhouse-0-0:
-    container_name: signoz-telemetrystore-clickhouse-0-0
     image: clickhouse/clickhouse-server:25.12.5
     restart: unless-stopped
     depends_on:
@@ -187,7 +180,8 @@ services:
   #
   # ⚠️  SEGURIDAD: el SigNoz self-hosted NO exige clave de ingesta. Quien
   #     alcance 4317/4318 puede escribir telemetría arbitraria en tu instancia.
-  #     Por eso aquí quedan atados a 127.0.0.1. Para acceso remoto usa VPN,
+  #     Por eso aquí NO se publican: solo son alcanzables por la red Docker
+  #     (alias signoz-ingester). Para acceso remoto usa VPN,
   #     WireGuard o un proxy con mTLS. Ver 08-SERVICIOS-COMERCIALES.md.
   #
   # Upstream NO define healthcheck para este servicio: no se inventa uno.
@@ -205,11 +199,6 @@ services:
     environment:
       - SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_DSN=tcp://signoz-telemetrystore-clickhouse-0-0:9000
       - SIGNOZ_OTEL_COLLECTOR_TIMEOUT=10m
-    ports:
-      # OTLP/gRPC y OTLP/HTTP atados a loopback. Para exponerlos de forma
-      # deliberada, cambia a "PUERTO:PUERTO" y lee la sección de proxy.
-      - "127.0.0.1:4317:4317"
-      - "127.0.0.1:4318:4318"
     depends_on:
       signoz-telemetrystore-migrator:
         condition: service_completed_successfully
@@ -225,7 +214,6 @@ services:
   # Aplicación SigNoz — UI + API + OpAMP (4320, no publicado).
   # ---------------------------------------------------------------------------
   signoz-signoz-0:
-    container_name: signoz-signoz-0
     image: signoz/signoz:v0.146.0
     restart: unless-stopped
     environment:
@@ -253,21 +241,15 @@ services:
         condition: service_healthy
       signoz-telemetrystore-migrator:
         condition: service_completed_successfully
-    ports:
-      - "${SIGNOZ_BIND_ADDRESS:-127.0.0.1}:8080:8080"
     networks:
       - signoz-network
 
 volumes:
   # ── PERSISTENTE Y CRÍTICO: sin esto se pierden usuarios, tableros y alertas.
-  signoz-metastore-postgres-0-data:
-    name: signoz-metastore-postgres-0-data
+  signoz-metastore-postgres-0-data: {}
   # ── PERSISTENTE: estado del cuórum de ClickHouse.
-  signoz-telemetrykeeper-0-data:
-    name: signoz-telemetrykeeper-0-data
+  signoz-telemetrykeeper-0-data: {}
   # ── PERSISTENTE: TODA la telemetría (trazas, métricas, logs).
-  signoz-telemetrystore-0-0-data:
-    name: signoz-telemetrystore-0-0-data
+  signoz-telemetrystore-0-0-data: {}
   # ── DESCARTABLE: binario descargado, se regenera solo al arrancar.
-  signoz-telemetrystore-user-scripts:
-    name: signoz-telemetrystore-user-scripts
+  signoz-telemetrystore-user-scripts: {}

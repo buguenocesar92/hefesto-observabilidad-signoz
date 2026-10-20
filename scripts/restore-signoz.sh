@@ -127,11 +127,20 @@ if [[ -f .env ]]; then
 fi
 [[ -n "${POSTGRES_PASSWORD:-}" ]] || fail "POSTGRES_PASSWORD no está definido en .env. Sin esto no puedo levantar el metastore."
 
+# Nombres derivados del proyecto Compose (sin container_name ni name: fijos).
+# En Coolify, exporta COMPOSE_PROJECT_NAME con el nombre del recurso.
+DC=(docker compose -f "${COMPOSE_FILE}")
+PROJECT="$("${DC[@]}" config | sed -n '1s/^name: //p')"
+[[ -n "${PROJECT}" ]] || fail "No pude resolver el nombre del proyecto Compose."
+VOL_POSTGRES="${PROJECT}_signoz-metastore-postgres-0-data"
+VOL_CLICKHOUSE="${PROJECT}_signoz-telemetrystore-0-0-data"
+VOL_KEEPER="${PROJECT}_signoz-telemetrykeeper-0-data"
+
 log "2/5: compruebo si el destino está ocupado."
 DATOS_OCUPADOS=0
 declare -a MOTIVOS=()
 
-for v in signoz-metastore-postgres-0-data signoz-telemetrystore-0-0-data signoz-telemetrykeeper-0-data; do
+for v in "${VOL_POSTGRES}" "${VOL_CLICKHOUSE}" "${VOL_KEEPER}"; do
   if docker volume inspect "${v}" >/dev/null 2>&1; then
     # Un volumen existe. Importa si tiene contenido: lo compruebo con un listado.
     # Uso la imagen de Postgres (ya fijada en el kit) para listar: nada de :latest.
@@ -164,11 +173,9 @@ fi
 log "3/5: levanto PostgreSQL vacío y restauro el metastore."
 docker compose -f "${COMPOSE_FILE}" up -d signoz-metastore-postgres-0
 
-CT_POSTGRES="signoz-metastore-postgres-0"
+CT_POSTGRES="$("${DC[@]}" ps -q signoz-metastore-postgres-0)"
+[[ -n "${CT_POSTGRES}" ]] || fail "No arrancó signoz-metastore-postgres-0 en el proyecto ${PROJECT}."
 IMAGEN_POSTGRES="postgres:16"
-VOL_POSTGRES="signoz-metastore-postgres-0-data"
-VOL_CLICKHOUSE="signoz-telemetrystore-0-0-data"
-VOL_KEEPER="signoz-telemetrykeeper-0-data"
 IMAGEN_CLICKHOUSE="clickhouse/clickhouse-server:25.12.5"
 
 # Espero a que Postgres acepte conexiones (máximo 120 s).

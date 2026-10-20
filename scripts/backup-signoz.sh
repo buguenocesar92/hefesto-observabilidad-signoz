@@ -100,19 +100,26 @@ else
 fi
 [[ -n "${POSTGRES_PASSWORD:-}" ]] || fail "POSTGRES_PASSWORD no está definido en .env."
 
-# --- nombres de contenedores (verificados contra compose.yaml) --------------
-CT_POSTGRES="signoz-metastore-postgres-0"
-CT_CLICKHOUSE="signoz-telemetrystore-clickhouse-0-0"
-CT_KEEPER="signoz-telemetrykeeper-clickhousekeeper-0"
+# --- contenedores y volúmenes del proyecto Compose ---------------------------
+# Sin container_name ni name: fijos, Compose los nombra con el proyecto:
+# contenedores <proyecto>-<servicio>-N y volúmenes <proyecto>_<volumen>.
+# En Coolify, exporta COMPOSE_PROJECT_NAME con el nombre del recurso.
+DC=(docker compose -f "${COMPOSE_FILE}")
+PROJECT="$("${DC[@]}" config | sed -n '1s/^name: //p')"
+[[ -n "${PROJECT}" ]] || fail "No pude resolver el nombre del proyecto Compose."
 
-VOL_POSTGRES="signoz-metastore-postgres-0-data"
-VOL_CLICKHOUSE="signoz-telemetrystore-0-0-data"
-VOL_KEEPER="signoz-telemetrykeeper-0-data"
+CT_POSTGRES="$("${DC[@]}" ps -a -q signoz-metastore-postgres-0)"
+CT_CLICKHOUSE="$("${DC[@]}" ps -a -q signoz-telemetrystore-clickhouse-0-0)"
+CT_KEEPER="$("${DC[@]}" ps -a -q signoz-telemetrykeeper-clickhousekeeper-0)"
+
+VOL_POSTGRES="${PROJECT}_signoz-metastore-postgres-0-data"
+VOL_CLICKHOUSE="${PROJECT}_signoz-telemetrystore-0-0-data"
+VOL_KEEPER="${PROJECT}_signoz-telemetrykeeper-0-data"
 
 IMAGEN_CLICKHOUSE="clickhouse/clickhouse-server:25.12.5"
 
 for ct in "${CT_POSTGRES}" "${CT_CLICKHOUSE}" "${CT_KEEPER}"; do
-  docker inspect "${ct}" >/dev/null 2>&1 || fail "No existe el contenedor ${ct}. ¿Está desplegado el kit?"
+  [[ -n "${ct}" ]] || fail "Falta un contenedor del kit en el proyecto ${PROJECT}. ¿Está desplegado? (docker compose -f compose.yaml ps)"
 done
 
 # --- directorio de salida -----------------------------------------------------
