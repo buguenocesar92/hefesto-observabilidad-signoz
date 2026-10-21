@@ -112,7 +112,6 @@ CT_POSTGRES="$("${DC[@]}" ps -a -q signoz-metastore-postgres-0)"
 CT_CLICKHOUSE="$("${DC[@]}" ps -a -q signoz-telemetrystore-clickhouse-0-0)"
 CT_KEEPER="$("${DC[@]}" ps -a -q signoz-telemetrykeeper-clickhousekeeper-0)"
 
-VOL_POSTGRES="${PROJECT}_signoz-metastore-postgres-0-data"
 VOL_CLICKHOUSE="${PROJECT}_signoz-telemetrystore-0-0-data"
 VOL_KEEPER="${PROJECT}_signoz-telemetrykeeper-0-data"
 
