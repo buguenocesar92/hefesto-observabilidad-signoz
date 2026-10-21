@@ -98,7 +98,7 @@ while IFS= read -r linea || [[ -n "${linea}" ]]; do
   nombre="${nombre#\*}"
   [[ -n "${nombre}" ]] || continue
   case "${nombre}" in
-    */*|..|/*|\\*) fail "Ruta sospechosa en manifest.sha256: '${nombre}'" ;;
+    */*|..|\\*) fail "Ruta sospechosa en manifest.sha256: '${nombre}'" ;;
   esac
   [[ "${#suma}" -eq 64 ]] || fail "SHA-256 inválido en el manifiesto para '${nombre}'"
   [[ -f "${RESPALDO}/${nombre}" ]] || fail "El manifiesto declara '${nombre}' pero no está en la carpeta."
@@ -175,7 +175,6 @@ docker compose -f "${COMPOSE_FILE}" up -d signoz-metastore-postgres-0
 
 CT_POSTGRES="$("${DC[@]}" ps -q signoz-metastore-postgres-0)"
 [[ -n "${CT_POSTGRES}" ]] || fail "No arrancó signoz-metastore-postgres-0 en el proyecto ${PROJECT}."
-IMAGEN_POSTGRES="postgres:16"
 IMAGEN_CLICKHOUSE="clickhouse/clickhouse-server:25.12.5"
 
 # Espero a que Postgres acepte conexiones (máximo 120 s).
