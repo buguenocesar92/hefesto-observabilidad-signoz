@@ -34,6 +34,8 @@ COMPOSE_FILE="${KIT_DIR}/compose.yaml"
 
 RESPALDO=""
 FORCE=0
+MODO=""
+FORCE=0
 
 log()  { printf '[restore] %s\n' "$*"; }
 fail() { printf '[restore] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -56,12 +58,20 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --respaldo) RESPALDO="${2:-}"; shift 2 ;;
     --force) FORCE=1; shift ;;
+    --dry-run) MODO="dry-run"; shift ;;
+    --confirmar) [[ $# -ge 2 ]] || fail "--confirmar necesita el valor."
+                [[ "$2" == "CONFIRMAR_RESTAURACION" ]] || fail "El valor de --confirmar debe ser CONFIRMAR_RESTAURACION."
+                MODO="confirmado"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) fail "Argumento desconocido: $1" ;;
   esac
 done
 
 [[ -n "${RESPALDO}" ]] || { usage; exit 1; }
+
+# --- Contrato comun de restauracion (docs/CONTRATO-RESPALDO.md) ----------------
+# Sin --confirmar CONFIRMAR_RESTAURACION no se restaura nada.
+[[ -n "${MODO}" ]] || fail "Falta --confirmar CONFIRMAR_RESTAURACION (o --dry-run para simular sin escribir)."
 
 # --- validación de rutas ------------------------------------------------------
 # Pure y antes de tocar Docker o el disco: una ruta inválida se rechaza sin
@@ -72,6 +82,21 @@ done
 [[ "${RESPALDO}" != "${KIT_DIR}"* ]] || fail "El respaldo no puede estar dentro del kit: ${RESPALDO}"
 [[ -z "$(find "${RESPALDO}" -maxdepth 0 -type l 2>/dev/null)" ]] || fail "El respaldo no puede ser un symlink."
 RESPALDO="$(cd -- "${RESPALDO}" && pwd)"
+if ! python3 scripts/respaldo_contrato.py check --dest "${RESPALDO}" \
+        --software "hefesto-observabilidad" --version "0.146.0" --database "postgresql+clickhouse"; then
+  fail "El respaldo no cumple el contrato de respaldo. NO se restaura."
+fi
+if [[ "${MODO}" == "dry-run" ]]; then
+  log "Simulacion: el respaldo es integro y no se escribio nada."
+# --- Contrato comun de restauracion: informe y auditoria --------------------
+python3 scripts/respaldo_contrato.py report --dest "@@origen@@" \
+    --software "@@software@@" --version "@@version@@" --database "@@database@@" \
+    --modo confirmado --resultado restaurado --destino "@@destino@@" || true
+python3 scripts/respaldo_contrato.py audit --root "@@destino@@" \
+    --software "{software}" --operacion restore \
+    --origen "@@origen@@" --destino "@@destino@@" --resultado restaurado || true
+  exit 0
+fi
 
 # =============================================================================
 # 0 — el respaldo debe estar MARCADO como completo
@@ -98,7 +123,7 @@ while IFS= read -r linea || [[ -n "${linea}" ]]; do
   nombre="${nombre#\*}"
   [[ -n "${nombre}" ]] || continue
   case "${nombre}" in
-    */*|..|/*|\\*) fail "Ruta sospechosa en manifest.sha256: '${nombre}'" ;;
+    ..|/*|\\*|*/*) fail "Ruta sospechosa en manifest.sha256: '${nombre}'" ;;
   esac
   [[ "${#suma}" -eq 64 ]] || fail "SHA-256 inválido en el manifiesto para '${nombre}'"
   [[ -f "${RESPALDO}/${nombre}" ]] || fail "El manifiesto declara '${nombre}' pero no está en la carpeta."
@@ -175,7 +200,6 @@ docker compose -f "${COMPOSE_FILE}" up -d signoz-metastore-postgres-0
 
 CT_POSTGRES="$("${DC[@]}" ps -q signoz-metastore-postgres-0)"
 [[ -n "${CT_POSTGRES}" ]] || fail "No arrancó signoz-metastore-postgres-0 en el proyecto ${PROJECT}."
-IMAGEN_POSTGRES="postgres:16"
 IMAGEN_CLICKHOUSE="clickhouse/clickhouse-server:25.12.5"
 
 # Espero a que Postgres acepte conexiones (máximo 120 s).

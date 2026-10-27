@@ -56,7 +56,7 @@ services:
     # Si necesitas reproducibilidad total, fija el digest con
     #   docker pull postgres:16 && docker inspect --format '{{index .RepoDigests 0}}' postgres:16
     # y reemplaza la etiqueta.
-    image: postgres:16
+    image: postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
     restart: unless-stopped
     environment:
       POSTGRES_DB: signoz
@@ -104,7 +104,7 @@ services:
   # histogramas en las alertas. Tarda en salir: no es un fallo de arranque.
   # ---------------------------------------------------------------------------
   signoz-telemetrystore-clickhouse-user-scripts:
-    image: clickhouse/clickhouse-server:25.12.5
+    image: clickhouse/clickhouse-server:25.12.5@sha256:cacf32d6884291dc2ff5e0156a97f46fc53ff7c929a7906d114e268a929dfd3a
     restart: on-failure
     command:
       - bash
@@ -127,7 +127,7 @@ services:
   # ClickHouse Keeper — coordinación del clúster ClickHouse.
   # ---------------------------------------------------------------------------
   signoz-telemetrykeeper-clickhousekeeper-0:
-    image: clickhouse/clickhouse-keeper:25.12.5
+    image: clickhouse/clickhouse-keeper:25.12.5@sha256:525b8b0f93ccb371131c46f22a066ea43d33d74aba314203e8044609945d8524
     restart: unless-stopped
     entrypoint: ["/usr/bin/clickhouse-keeper", "--config-file=/etc/clickhouse-keeper/keeper.yaml"]
     # Healthcheck tomado del artefacto de Foundry (upstream).
@@ -150,7 +150,7 @@ services:
   # No le abras el puerto "por si acaso": eso entrega la telemetría del cliente.
   # ---------------------------------------------------------------------------
   signoz-telemetrystore-clickhouse-0-0:
-    image: clickhouse/clickhouse-server:25.12.5
+    image: clickhouse/clickhouse-server:25.12.5@sha256:cacf32d6884291dc2ff5e0156a97f46fc53ff7c929a7906d114e268a929dfd3a
     restart: unless-stopped
     depends_on:
       signoz-telemetrykeeper-clickhousekeeper-0:
@@ -214,7 +214,7 @@ services:
   # Aplicación SigNoz — UI + API + OpAMP (4320, no publicado).
   # ---------------------------------------------------------------------------
   signoz-signoz-0:
-    image: signoz/signoz:v0.146.0
+    image: signoz/signoz:v0.146.0@sha256:cd3ca6950df3b3681b4629c1b2cea4d3bcd5fece57445a3ec2a1a20466ab14ca
     restart: unless-stopped
     environment:
       - SIGNOZ_SQLSTORE_PROVIDER=postgres

@@ -112,7 +112,6 @@ CT_POSTGRES="$("${DC[@]}" ps -a -q signoz-metastore-postgres-0)"
 CT_CLICKHOUSE="$("${DC[@]}" ps -a -q signoz-telemetrystore-clickhouse-0-0)"
 CT_KEEPER="$("${DC[@]}" ps -a -q signoz-telemetrykeeper-clickhousekeeper-0)"
 
-VOL_POSTGRES="${PROJECT}_signoz-metastore-postgres-0-data"
 VOL_CLICKHOUSE="${PROJECT}_signoz-telemetrystore-0-0-data"
 VOL_KEEPER="${PROJECT}_signoz-telemetrykeeper-0-data"
 
@@ -228,6 +227,17 @@ EOF
 
 # La marca de completado va AL FINAL, y solo si todo lo anterior pasó.
 date -u +"completado_utc=%Y-%m-%dT%H:%M:%SZ" > "${OUT}/.COMPLETO"
+
+# --- Contrato comun de respaldo (docs/CONTRATO-RESPALDO.md) ---
+# El .env NUNCA se copia en claro: solo viajan sus nombres (env.vars) y, si hay
+# receptor age, el .env cifrado (env.age). Sin receptor, el respaldo sale sin
+# el .env y el manifiesto lo declara. El manifiesto lleva las cinco claves.
+CONTRATO_ENV_META="$(python3 scripts/respaldo_contrato.py env --root . --dest "@@destino@@")" \
+    || { @@prefijo@@ "No se pudo exportar el .env al respaldo."; exit 1; }
+python3 scripts/respaldo_contrato.py manifest --dest "@@destino@@" \
+    --software "@@software@@" --version "@@version@@" --database "@@database@@" \
+    --env-meta "$CONTRATO_ENV_META" \
+    || { @@prefijo@@ "No se pudo escribir manifest.json."; exit 1; }
 
 trap - ERR
 

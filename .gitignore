@@ -34,3 +34,13 @@ id_ed25519
 # Logs
 *.log
 logs/
+# Artefactos locales de sesion/agente: nunca versionar.
+.superpowers/
+# Respaldos, estado de despliegue y auditoria: fuera del repositorio.
+respaldos/
+*.age
+# Claves privadas de los certificados del kit.
+certs/*.key
+certs/*.pem
+# Cache de Python.
+__pycache__/
